@@ -507,7 +507,7 @@ SP_API enum sp_return sp_open(struct sp_port *port, enum sp_mode flags)
 #define INIT_OVERLAPPED(ovl) do { \
 	memset(&port->ovl, 0, sizeof(port->ovl)); \
 	port->ovl.hEvent = INVALID_HANDLE_VALUE; \
-	if ((port->ovl.hEvent = CreateEvent(NULL, TRUE, TRUE, NULL)) \
+	if ((port->ovl.hEvent = CreateEvent(NULL, TRUE, FALSE, NULL)) \
 			== INVALID_HANDLE_VALUE) { \
 		sp_close(port); \
 		RETURN_FAIL(#ovl "CreateEvent() failed"); \
@@ -738,15 +738,15 @@ SP_API enum sp_return sp_blocking_write(struct sp_port *port, const void *buf,
 	if (!buf)
 		RETURN_ERROR(SP_ERR_ARG, "Null buffer");
 
+	if (count == 0)
+		RETURN_ERROR(SP_ERR_ARG, "Zero count");
+
 	if (timeout_ms)
-		DEBUG_FMT("Writing %d bytes to port %s, timeout %d ms",
+		DEBUG_FMT("Writing up to %d bytes to port %s, timeout %d ms",
 			count, port->name, timeout_ms);
 	else
-		DEBUG_FMT("Writing %d bytes to port %s, no timeout",
+		DEBUG_FMT("Writing up to %d bytes to port %s, no timeout",
 			count, port->name);
-
-	if (count == 0)
-		RETURN_INT(0);
 
 #ifdef _WIN32
 	DWORD bytes_written = 0;
@@ -870,10 +870,10 @@ SP_API enum sp_return sp_nonblocking_write(struct sp_port *port,
 	if (!buf)
 		RETURN_ERROR(SP_ERR_ARG, "Null buffer");
 
-	DEBUG_FMT("Writing up to %d bytes to port %s", count, port->name);
-
 	if (count == 0)
-		RETURN_INT(0);
+		RETURN_ERROR(SP_ERR_ARG, "Zero count");
+
+	DEBUG_FMT("Writing up to %d bytes to port %s", count, port->name);
 
 #ifdef _WIN32
 	DWORD bytes_written = 0;
@@ -961,15 +961,15 @@ SP_API enum sp_return sp_blocking_read(struct sp_port *port, void *buf,
 	if (!buf)
 		RETURN_ERROR(SP_ERR_ARG, "Null buffer");
 
+	if (count == 0)
+		RETURN_ERROR(SP_ERR_ARG, "Zero count");
+
 	if (timeout_ms)
-		DEBUG_FMT("Reading %d bytes from port %s, timeout %d ms",
+		DEBUG_FMT("Reading up to %d bytes from port %s, timeout %d ms",
 			count, port->name, timeout_ms);
 	else
-		DEBUG_FMT("Reading %d bytes from port %s, no timeout",
+		DEBUG_FMT("Reading up to %d bytes from port %s, no timeout",
 			count, port->name);
-
-	if (count == 0)
-		RETURN_INT(0);
 
 #ifdef _WIN32
 	DWORD bytes_read = 0;
@@ -1213,17 +1213,20 @@ SP_API enum sp_return sp_nonblocking_read(struct sp_port *port, void *buf,
 	if (!buf)
 		RETURN_ERROR(SP_ERR_ARG, "Null buffer");
 
+	if (count == 0)
+		RETURN_ERROR(SP_ERR_ARG, "Zero count");
+
 	DEBUG_FMT("Reading up to %d bytes from port %s", count, port->name);
 
 #ifdef _WIN32
 	DWORD bytes_read;
 
 	/* Set timeout. */
-	if (port->timeouts.ReadIntervalTimeout != MAXDWORD ||
-			port->timeouts.ReadTotalTimeoutMultiplier != MAXDWORD ||
+	if (port->timeouts.ReadIntervalTimeout != 0 ||
+			port->timeouts.ReadTotalTimeoutMultiplier != 0 ||
 			port->timeouts.ReadTotalTimeoutConstant != 1) {
-		port->timeouts.ReadIntervalTimeout = MAXDWORD;
-		port->timeouts.ReadTotalTimeoutMultiplier = MAXDWORD;
+		port->timeouts.ReadIntervalTimeout = 0;
+		port->timeouts.ReadTotalTimeoutMultiplier = 0;
 		port->timeouts.ReadTotalTimeoutConstant = 1;
 		if (SetCommTimeouts(port->hdl, &port->timeouts) == 0)
 			RETURN_FAIL("SetCommTimeouts() failed");
