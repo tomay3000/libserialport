@@ -1425,6 +1425,7 @@ enum sp_return sp_add_port_events(struct sp_event_set *event_set,
 /**
  * Wait for any of a set of events to occur.
  *
+ * @param[in] port Pointer to a port structure. Must not be NULL.
  * @param[in] event_set Event set to wait on. Must not be NULL.
  * @param[in] timeout_ms Timeout in milliseconds, or zero to wait indefinitely.
  *
@@ -1432,7 +1433,7 @@ enum sp_return sp_add_port_events(struct sp_event_set *event_set,
  *
  * @since 0.1.0
  */
-enum sp_return sp_wait(struct sp_event_set *event_set, unsigned int timeout_ms);
+enum sp_return sp_wait(struct sp_port *port, struct sp_event_set *event_set, unsigned int timeout_ms);
 
 /**
  * Free a structure allocated by sp_new_event_set().

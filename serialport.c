@@ -414,40 +414,34 @@ SP_API void sp_free_port_list(struct sp_port **list)
 	CHECK_PORT_HANDLE(); \
 } while (0)
 
-#ifdef WIN32
+#ifdef _WIN32
 /** To be called after port receive buffer is emptied. */
 static enum sp_return restart_wait(struct sp_port *port)
 {
 	DWORD wait_result;
 
-	if (port->wait_running) {
-		/* Check status of running wait operation. */
-		if (GetOverlappedResult(port->hdl, &port->wait_ovl,
-				&wait_result, FALSE)) {
-			DEBUG("Previous wait completed");
-			port->wait_running = FALSE;
-		} else if (GetLastError() == ERROR_IO_INCOMPLETE) {
-			DEBUG("Previous wait still running");
-			RETURN_OK();
-		} else {
+	/* Check whether previous wait is complete. */
+	if (GetOverlappedResult(port->hdl, &port->wait_ovl, &wait_result, FALSE) == 0) {
+		if (GetLastError() != ERROR_IO_INCOMPLETE)
 			RETURN_FAIL("GetOverlappedResult() failed");
+		else {
+			DEBUG("Previous wait incomplete");
+			/* Can't take a new wait until the previous one finishes. */
+			RETURN_ERROR(SP_OK, "Can't take a new wait until the previous one finishes");
 		}
-	}
+	} else
+		DEBUG("Previous wait completed");
 
-	if (!port->wait_running) {
-		/* Start new wait operation. */
-		if (WaitCommEvent(port->hdl, &port->events,
-				&port->wait_ovl)) {
-			DEBUG("New wait returned, events already pending");
-		} else if (GetLastError() == ERROR_IO_PENDING) {
-			DEBUG("New wait running in background");
-			port->wait_running = TRUE;
-		} else {
+	/* Start new wait operation. */
+	if (WaitCommEvent(port->hdl, &port->events, &port->wait_ovl) == 0)
+		if (GetLastError() != ERROR_IO_PENDING)
 			RETURN_FAIL("WaitCommEvent() failed");
-		}
-	}
+		else
+			DEBUG("New wait running in background");
+	else
+		DEBUG("New wait returned immediately, events were already pending");
 
-	RETURN_OK();
+RETURN_OK();
 }
 #endif
 
@@ -518,13 +512,11 @@ SP_API enum sp_return sp_open(struct sp_port *port, enum sp_mode flags)
 	INIT_OVERLAPPED(write_ovl);
 	INIT_OVERLAPPED(wait_ovl);
 
-	/* Set event mask for RX and error events. */
-	if (SetCommMask(port->hdl, EV_RXCHAR | EV_ERR) == 0) {
+	/* Set event mask for RX, TX and ERROR events. */
+	/*if (SetCommMask(port->hdl, EV_RXCHAR | EV_TXEMPTY | EV_ERR) == 0) {
 		sp_close(port);
 		RETURN_FAIL("SetCommMask() failed");
-	}
-
-	port->wait_running = FALSE;
+	}*/
 
 	ret = restart_wait(port);
 
@@ -689,6 +681,7 @@ SP_API enum sp_return sp_flush(struct sp_port *port, enum sp_buffer buffers)
 	if (tcflush(port->fd, flags) < 0)
 		RETURN_FAIL("tcflush() failed");
 #endif
+
 	RETURN_OK();
 }
 
@@ -931,9 +924,9 @@ SP_API enum sp_return sp_nonblocking_write(struct sp_port *port,
 #endif
 }
 
-#ifdef _WIN32
+//#ifdef _WIN32
 /* Restart wait operation if buffer was emptied. */
-static enum sp_return restart_wait_if_needed(struct sp_port *port, unsigned int bytes_read)
+/*static enum sp_return restart_wait_if_needed(struct sp_port *port, unsigned int bytes_read)
 {
 	DWORD errors;
 	COMSTAT comstat;
@@ -948,8 +941,8 @@ static enum sp_return restart_wait_if_needed(struct sp_port *port, unsigned int 
 		TRY(restart_wait(port));
 
 	RETURN_OK();
-}
-#endif
+}*/
+//#endif
 
 SP_API enum sp_return sp_blocking_read(struct sp_port *port, void *buf,
                                        size_t count, unsigned int timeout_ms)
@@ -999,7 +992,7 @@ SP_API enum sp_return sp_blocking_read(struct sp_port *port, void *buf,
 
 	DEBUG_FMT("Read completed, %d/%d bytes read", bytes_read, count);
 
-	TRY(restart_wait_if_needed(port, bytes_read));
+	//TRY(restart_wait_if_needed(port, bytes_read));
 
 	RETURN_INT(bytes_read);
 
@@ -1129,7 +1122,7 @@ SP_API enum sp_return sp_blocking_read_next(struct sp_port *port, void *buf,
 
 	DEBUG_FMT("Read completed, %d/%d bytes read", bytes_read, count);
 
-	TRY(restart_wait_if_needed(port, bytes_read));
+	//TRY(restart_wait_if_needed(port, bytes_read));
 
 	RETURN_INT(bytes_read);
 
@@ -1246,7 +1239,7 @@ SP_API enum sp_return sp_nonblocking_read(struct sp_port *port, void *buf,
 
 	DEBUG_FMT("Read completed immediately, %d/%d bytes read", bytes_read, count);
 
-	TRY(restart_wait_if_needed(port, bytes_read));
+	//TRY(restart_wait_if_needed(port, bytes_read));
 
 	RETURN_INT(bytes_read);
 
@@ -1379,11 +1372,12 @@ SP_API enum sp_return sp_add_port_events(struct sp_event_set *event_set,
 		RETURN_OK();
 
 #ifdef _WIN32
-	enum sp_event handle_mask;
+	TRY(add_handle(event_set, port->wait_ovl.hEvent, mask));
+	/*enum sp_event handle_mask;
 	if ((handle_mask = mask & SP_EVENT_TX_READY))
 		TRY(add_handle(event_set, port->write_ovl.hEvent, handle_mask));
 	if ((handle_mask = mask & (SP_EVENT_RX_READY | SP_EVENT_ERROR)))
-		TRY(add_handle(event_set, port->wait_ovl.hEvent, handle_mask));
+		TRY(add_handle(event_set, port->wait_ovl.hEvent, handle_mask));*/
 #else
 	TRY(add_handle(event_set, port->fd, mask));
 #endif
@@ -1412,7 +1406,7 @@ SP_API void sp_free_event_set(struct sp_event_set *event_set)
 	RETURN();
 }
 
-SP_API enum sp_return sp_wait(struct sp_event_set *event_set,
+SP_API enum sp_return sp_wait(struct sp_port *port, struct sp_event_set *event_set,
                               unsigned int timeout_ms)
 {
 	TRACE("%p, %d", event_set, timeout_ms);
@@ -1421,12 +1415,36 @@ SP_API enum sp_return sp_wait(struct sp_event_set *event_set,
 		RETURN_ERROR(SP_ERR_ARG, "Null event set");
 
 #ifdef _WIN32
+	DWORD events = 0;
+	/*DWORD errors;
+	COMSTAT comstat;
+	DWORD flags = 0;*/
+	unsigned int i;
+
+	for (i = 0; i < event_set->count; i++) {
+		if (event_set->masks[i] & SP_EVENT_RX_READY)
+			events |= EV_RXCHAR;
+		if (event_set->masks[i] & SP_EVENT_TX_READY)
+			events |= EV_TXEMPTY;
+		if (event_set->masks[i] & SP_EVENT_ERROR)
+			events |= EV_ERR;
+	}
+
+	/* Set event mask for RX and/or TX and/or ERROR events. */
+	if (SetCommMask(port->hdl, events) == 0)
+		RETURN_FAIL("SetCommMask() failed");
+
+	TRY(restart_wait(port));
+
 	if (WaitForMultipleObjects(event_set->count, event_set->handles, FALSE,
 			timeout_ms ? timeout_ms : INFINITE) == WAIT_FAILED)
 		RETURN_FAIL("WaitForMultipleObjects() failed");
 
 	RETURN_OK();
+
 #else
+	//(void)port; // Unused parameter
+
 	struct timeval start, delta, now, end = {0, 0};
 	const struct timeval max_delta = {
 		(INT_MAX / 1000), (INT_MAX % 1000) * 1000};
@@ -1506,6 +1524,7 @@ SP_API enum sp_return sp_wait(struct sp_event_set *event_set,
 	}
 
 	free(pollfds);
+
 	RETURN_OK();
 #endif
 }
