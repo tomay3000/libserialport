@@ -461,6 +461,8 @@ SP_API enum sp_return sp_open(struct sp_port *port, enum sp_mode flags)
 	DEBUG_FMT("Opening port %s", port->name);
 
 #ifdef _WIN32
+	(void)ret; // Unused variable
+
 	DWORD desired_access = 0, flags_and_attributes = 0, errors;
 	char *escaped_port_name;
 	COMSTAT status;
@@ -518,11 +520,11 @@ SP_API enum sp_return sp_open(struct sp_port *port, enum sp_mode flags)
 		RETURN_FAIL("SetCommMask() failed");
 	}*/
 
-	ret = restart_wait(port);
+	//ret = restart_wait(port);
 
-	if (ret < 0) {
+	/*if (ret < 0) {
 		sp_close(port);
-		RETURN_CODEVAL(ret);
+		RETURN_CODEVAL(ret);*/
 	}
 #else
 	int flags_local = O_NONBLOCK | O_NOCTTY;
@@ -666,8 +668,8 @@ SP_API enum sp_return sp_flush(struct sp_port *port, enum sp_buffer buffers)
 	if (PurgeComm(port->hdl, flags) == 0)
 		RETURN_FAIL("PurgeComm() failed");
 
-	if (buffers & SP_BUF_INPUT)
-		TRY(restart_wait(port));
+	/*if (buffers & SP_BUF_INPUT)
+		TRY(restart_wait(port));*/
 #else
 	int flags = 0;
 	if (buffers == SP_BUF_BOTH)
@@ -1416,9 +1418,6 @@ SP_API enum sp_return sp_wait(struct sp_port *port, struct sp_event_set *event_s
 
 #ifdef _WIN32
 	DWORD events = 0;
-	/*DWORD errors;
-	COMSTAT comstat;
-	DWORD flags = 0;*/
 	unsigned int i;
 
 	for (i = 0; i < event_set->count; i++) {
@@ -1443,7 +1442,7 @@ SP_API enum sp_return sp_wait(struct sp_port *port, struct sp_event_set *event_s
 	RETURN_OK();
 
 #else
-	//(void)port; // Unused parameter
+	(void)port; // Unused parameter
 
 	struct timeval start, delta, now, end = {0, 0};
 	const struct timeval max_delta = {
