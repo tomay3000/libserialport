@@ -524,8 +524,9 @@ SP_API enum sp_return sp_open(struct sp_port *port, enum sp_mode flags)
 
 	/*if (ret < 0) {
 		sp_close(port);
-		RETURN_CODEVAL(ret);*/
-	}
+		RETURN_CODEVAL(ret);
+	}*/
+
 #else
 	int flags_local = O_NONBLOCK | O_NOCTTY;
 
