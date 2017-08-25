@@ -78,7 +78,8 @@ SP_API enum sp_return sp_get_port_by_name(const char *portname, struct sp_port *
 #if !defined(_WIN32) && defined(HAVE_REALPATH)
 	/* get_port_details() below tries to be too smart and figure out
 	 * some transport properties from the port name which breaks with
-	 * symlinks. Therefore we canonicalize the portname first. */
+	 * symlinks. Therefore we canonicalize the portname first.
+	 */
 	char pathbuf[PATH_MAX+1];
 	char *res = realpath(portname, pathbuf);
 	if (!res)
@@ -415,7 +416,7 @@ SP_API void sp_free_port_list(struct sp_port **list)
 } while (0)
 
 #ifdef _WIN32
-/** To be called after port receive buffer is emptied. */
+/* To be called after port receive buffer is emptied. */
 static enum sp_return restart_wait(struct sp_port *port)
 {
 	DWORD wait_result;
@@ -513,19 +514,6 @@ SP_API enum sp_return sp_open(struct sp_port *port, enum sp_mode flags)
 	INIT_OVERLAPPED(read_ovl);
 	INIT_OVERLAPPED(write_ovl);
 	INIT_OVERLAPPED(wait_ovl);
-
-	/* Set event mask for RX, TX and ERROR events. */
-	/*if (SetCommMask(port->hdl, EV_RXCHAR | EV_TXEMPTY | EV_ERR) == 0) {
-		sp_close(port);
-		RETURN_FAIL("SetCommMask() failed");
-	}*/
-
-	//ret = restart_wait(port);
-
-	/*if (ret < 0) {
-		sp_close(port);
-		RETURN_CODEVAL(ret);
-	}*/
 
 #else
 	int flags_local = O_NONBLOCK | O_NOCTTY;
@@ -669,8 +657,6 @@ SP_API enum sp_return sp_flush(struct sp_port *port, enum sp_buffer buffers)
 	if (PurgeComm(port->hdl, flags) == 0)
 		RETURN_FAIL("PurgeComm() failed");
 
-	/*if (buffers & SP_BUF_INPUT)
-		TRY(restart_wait(port));*/
 #else
 	int flags = 0;
 	if (buffers == SP_BUF_BOTH)
@@ -927,26 +913,6 @@ SP_API enum sp_return sp_nonblocking_write(struct sp_port *port,
 #endif
 }
 
-//#ifdef _WIN32
-/* Restart wait operation if buffer was emptied. */
-/*static enum sp_return restart_wait_if_needed(struct sp_port *port, unsigned int bytes_read)
-{
-	DWORD errors;
-	COMSTAT comstat;
-
-	if (bytes_read == 0)
-		RETURN_OK();
-
-	if (ClearCommError(port->hdl, &errors, &comstat) == 0)
-		RETURN_FAIL("ClearCommError() failed");
-
-	if (comstat.cbInQue == 0)
-		TRY(restart_wait(port));
-
-	RETURN_OK();
-}*/
-//#endif
-
 SP_API enum sp_return sp_blocking_read(struct sp_port *port, void *buf,
                                        size_t count, unsigned int timeout_ms)
 {
@@ -994,8 +960,6 @@ SP_API enum sp_return sp_blocking_read(struct sp_port *port, void *buf,
 		DEBUG("Read timed out");
 
 	DEBUG_FMT("Read completed, %d/%d bytes read", bytes_read, count);
-
-	//TRY(restart_wait_if_needed(port, bytes_read));
 
 	RETURN_INT(bytes_read);
 
@@ -1125,8 +1089,6 @@ SP_API enum sp_return sp_blocking_read_next(struct sp_port *port, void *buf,
 
 	DEBUG_FMT("Read completed, %d/%d bytes read", bytes_read, count);
 
-	//TRY(restart_wait_if_needed(port, bytes_read));
-
 	RETURN_INT(bytes_read);
 
 #else
@@ -1241,8 +1203,6 @@ SP_API enum sp_return sp_nonblocking_read(struct sp_port *port, void *buf,
 		DEBUG("Read timed out");
 
 	DEBUG_FMT("Read completed immediately, %d/%d bytes read", bytes_read, count);
-
-	//TRY(restart_wait_if_needed(port, bytes_read));
 
 	RETURN_INT(bytes_read);
 
@@ -1376,11 +1336,6 @@ SP_API enum sp_return sp_add_port_events(struct sp_event_set *event_set,
 
 #ifdef _WIN32
 	TRY(add_handle(event_set, port->wait_ovl.hEvent, mask));
-	/*enum sp_event handle_mask;
-	if ((handle_mask = mask & SP_EVENT_TX_READY))
-		TRY(add_handle(event_set, port->write_ovl.hEvent, handle_mask));
-	if ((handle_mask = mask & (SP_EVENT_RX_READY | SP_EVENT_ERROR)))
-		TRY(add_handle(event_set, port->wait_ovl.hEvent, handle_mask));*/
 #else
 	TRY(add_handle(event_set, port->fd, mask));
 #endif
