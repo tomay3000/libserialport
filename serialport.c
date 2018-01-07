@@ -464,7 +464,7 @@ SP_API enum sp_return sp_open(struct sp_port *port, enum sp_mode flags)
 #ifdef _WIN32
 	(void)ret; // Unused variable
 
-	DWORD desired_access = 0, flags_and_attributes = 0, errors;
+	DWORD desired_access = 0, errors;
 	char *escaped_port_name;
 	COMSTAT status;
 
@@ -474,14 +474,13 @@ SP_API enum sp_return sp_open(struct sp_port *port, enum sp_mode flags)
 	sprintf(escaped_port_name, "\\\\.\\%s", port->name);
 
 	/* Map 'flags' to the OS-specific settings. */
-	flags_and_attributes = FILE_ATTRIBUTE_NORMAL | FILE_FLAG_OVERLAPPED | FILE_FLAG_NO_BUFFERING | FILE_FLAG_WRITE_THROUGH;
 	if (flags & SP_MODE_READ)
 		desired_access |= GENERIC_READ;
 	if (flags & SP_MODE_WRITE)
 		desired_access |= GENERIC_WRITE;
 
-	port->hdl = CreateFile(escaped_port_name, desired_access, 0, 0,
-			 OPEN_EXISTING, flags_and_attributes, 0);
+	port->hdl = CreateFile(escaped_port_name, desired_access, 0, NULL,
+			 OPEN_EXISTING, FILE_FLAG_OVERLAPPED, NULL);
 
 	free(escaped_port_name);
 
